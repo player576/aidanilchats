@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>aidanilchats PRO+</title>
+    <title>aidanilchats FINAL</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #1e1e24; color: #fff; max-width: 500px; margin: 20px auto; padding: 20px; }
         h2 { text-align: center; color: #ffca28; margin-bottom: 5px; }
         .my-tag { text-align: center; color: #aaa; font-size: 0.9em; margin-bottom: 20px; }
-        .my-tag span { color: #ffca28; font-weight: bold; background: #2a2a35; padding: 2px 6px; border-radius: 4px; }
+        .my-tag span { color: #ffca28; font-weight: bold; background: #2a2a35; padding: 4px 10px; border-radius: 4px; border: 1px solid #444; }
         
         .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
-        .search-box input { flex-grow: 1; padding: 10px; background: #2a2a35; border: 1px solid #444; color: white; border-radius: 6px; text-transform: uppercase; }
+        .search-box input { flex-grow: 1; padding: 10px; background: #2a2a35; border: 1px solid #444; color: white; border-radius: 6px; }
         
         #invite-box { background: #f04747; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; text-align: center; font-weight: bold; }
         #invite-box button { background: #fff; color: #000; margin-left: 10px; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
@@ -34,7 +34,7 @@
 <body>
 
     <h2>aidanilchats</h2>
-    <div class="my-tag">Ваш уникальный тег: <span id="myTagLabel">....</span></div>
+    <div class="my-tag">Ваш никнейм: <span id="myTagLabel">Загрузка...</span></div>
     
     <div id="invite-box">
         Пользователь <span id="inviter-name">XXXX</span> хочет начать чат!
@@ -42,8 +42,8 @@
     </div>
 
     <div class="search-box">
-        <input type="text" id="searchTagInput" maxlength="4" placeholder="Введите 4 буквы друга (например, WXYZ)">
-        <button onclick="startChat()">Открыть чат</button>
+        <input type="text" id="searchTagInput" placeholder="Введите никнейм друга для поиска...">
+        <button onclick="startChat()">Найти и открыть</button>
     </div>
 
     <div id="chat-target-title">Чат с пользователем ....</div>
@@ -69,39 +69,42 @@
         const chatDiv = document.getElementById('chat');
         const msgInput = document.getElementById('messageInput');
 
-        // 1. ИНИЦИАЛИЗАЦИЯ ПОЛЬЗОВАТЕЛЯ
+        // 1. ЗАПРОС И РЕГИСТРАЦИЯ НИКНЕЙМА
         async function initUser() {
-            let savedTag = localStorage.getItem('aidanil_tag');
-            if (!savedTag) {
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-                savedTag = '';
-                for (let i = 0; i < 4; i++) {
-                    savedTag += chars.charAt(Math.floor(Math.random() * chars.length));
-                }
-                localStorage.setItem('aidanil_tag', savedTag);
+            let savedTag = localStorage.getItem('aidanil_custom_nickname');
+            
+            // Если ника нет в памяти браузера, запрашиваем его через всплывающее окно prompt
+            while (!savedTag || savedTag.trim() === "") {
+                savedTag = prompt("Добро пожаловать в aidanilchats!\nВведите ваш уникальный никнейм (любые буквы, цифры, символы):");
             }
-            myTag = savedTag;
+            
+            // Убираем лишние пробелы по краям
+            myTag = savedTag.trim();
             document.getElementById('myTagLabel').textContent = myTag;
+            localStorage.setItem('aidanil_custom_nickname', myTag);
 
             try {
-                // Регистрируем наш тег в базе данных
-                await fetch(`${DB_BASE_URL}users/${myTag}.json`, {
+                // Регистрируем ник в Firebase, чтобы другие могли нас найти
+                // Используем encodeURIComponent на случай, если в нике есть спецсимволы или пробелы
+                await fetch(`${DB_BASE_URL}users/${encodeURIComponent(myTag)}.json`, {
                     method: 'PUT',
                     body: JSON.stringify({ active: true })
                 });
             } catch (e) {
-                console.error("Ошибка регистрации юзера:", e);
+                console.error("Ошибка сети при регистрации:", e);
             }
 
-            // Запускаем фоновый цикл раз в секунду
+            // Запускаем постоянный секундный таймер обновлений
             loopInterval = setInterval(globalTick, 1000);
         }
 
-        // 2. ФОНОВЫЙ ЦИКЛ ОБНОВЛЕНИЯ
+        // 2. ФОНОВЫЙ ТИК (Ловим инвайты и обновляем чат)
         async function globalTick() {
-            // Проверяем входящие инвайты
+            if (!myTag) return;
+            
             try {
-                const res = await fetch(`${DB_BASE_URL}invites/${myTag}.json`);
+                // Проверяем входящие приглашения для нашего ника
+                const res = await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`);
                 const inviteData = await res.json();
                 
                 if (inviteData && inviteData.status === 'pending') {
@@ -113,18 +116,18 @@
                 }
             } catch(e) {}
 
-            // Если открыто окно чата — проверяем статус и грузим сообщения
+            // Если открыт чат — обновляем статус одобрения и сообщения
             if (currentChatId) {
                 checkChatStatusAndLoad();
             }
         }
 
-        // 3. ОТКРЫТИЕ ЧАТА (Кнопка "Открыть чат")
+        // 3. ОТКРЫТИЕ ЧАТА (Кнопка "Найти и открыть")
         async function startChat() {
-            const inputTag = document.getElementById('searchTagInput').value.trim().toUpperCase();
+            const inputTag = document.getElementById('searchTagInput').value.trim();
             
-            if (inputTag.length !== 4) {
-                alert('Тег должен состоять ровно из 4 букв!');
+            if (!inputTag) {
+                alert('Введите хоть какой-нибудь никнейм!');
                 return;
             }
             if (inputTag === myTag) {
@@ -132,20 +135,21 @@
                 return;
             }
 
-            // Проверяем, существует ли пользователь в базе данных
-            const userCheck = await fetch(`${DB_BASE_URL}users/${inputTag}.json`);
+            // БАГ 1 ИСПРАВЛЕН: Проверяем, существует ли этот ник в Firebase
+            const userCheck = await fetch(`${DB_BASE_URL}users/${encodeURIComponent(inputTag)}.json`);
             const userData = await userCheck.json();
             
             if (!userData) {
-                alert(`Пользователь ${inputTag} не существует! Проверь правильность ввода.`);
+                alert(`Пользователь "${inputTag}" не найден в мессенджере. Проверь буквы и пробелы!`);
                 return;
             }
 
             targetTag = inputTag;
+            // Создаем ID чата. Сортируем ники по алфавиту, чтобы у обоих ID совпал независимо от того, кто первый нашел друга
             currentChatId = [myTag, targetTag].sort().join('_');
 
-            // Отправляем инвайт собеседнику
-            await fetch(`${DB_BASE_URL}invites/${targetTag}.json`, {
+            // БАГ 2 ИСПРАВЛЕН: Отправляем инвайт собеседнику на подтверждение
+            await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(targetTag)}.json`, {
                 method: 'PUT',
                 body: JSON.stringify({ from: myTag, status: 'pending' })
             });
@@ -153,15 +157,15 @@
             showChatUI();
         }
 
-        // 4. ПРИНЯТИЕ ПРИГЛАШЕНИЯ
+        // 4. ПРИНЯТИЕ ПРИГЛАШЕНИЯ (Кнопка "Принять")
         async function acceptInvite() {
             if (!activeInviteFrom) return;
             
             targetTag = activeInviteFrom;
             currentChatId = [myTag, targetTag].sort().join('_');
 
-            // Меням статус инвайта у себя на "accepted"
-            await fetch(`${DB_BASE_URL}invites/${myTag}.json`, {
+            // Меняем статус инвайта у себя на "accepted"
+            await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`, {
                 method: 'PUT',
                 body: JSON.stringify({ from: targetTag, status: 'accepted' })
             });
@@ -178,13 +182,13 @@
             checkChatStatusAndLoad();
         }
 
-        // 5. ПРОВЕРКА СТАТУСА ЧАТА И ЗАГРУЗКА
+        // 5. МОНИТОРИНГ СТАТУСА ЧАТА И ЗАГРУЗКА
         async function checkChatStatusAndLoad() {
             try {
-                const resMyInvite = await fetch(`${DB_BASE_URL}invites/${myTag}.json`);
+                const resMyInvite = await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`);
                 const myInviteData = await resMyInvite.json();
                 
-                const resTheirInvite = await fetch(`${DB_BASE_URL}invites/${targetTag}.json`);
+                const resTheirInvite = await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(targetTag)}.json`);
                 const theirInviteData = await resTheirInvite.json();
 
                 let isAccepted = false;
@@ -209,7 +213,7 @@
 
             msgInput.value = '';
             
-            const url = `${DB_BASE_URL}chats/${currentChatId}.json`;
+            const url = `${DB_BASE_URL}chats/${encodeURIComponent(currentChatId)}.json`;
             try {
                 await fetch(url, {
                     method: 'POST',
@@ -222,9 +226,9 @@
             } catch (e) { console.error(e); }
         }
 
-        // 7. ЗАГРУЗКА СООБЩЕНИЙ
+        // 7. ЗАГРУЗКА И СОРТИРОВКА ХРОНОЛОГИИ
         async function loadMessages() {
-            const url = `${DB_BASE_URL}chats/${currentChatId}.json`;
+            const url = `${DB_BASE_URL}chats/${encodeURIComponent(currentChatId)}.json`;
             try {
                 const response = await fetch(url);
                 const data = await response.json();
@@ -248,7 +252,7 @@
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        // Запуск
+        // Запуск всей логики мессенджера
         initUser();
 
         msgInput.addEventListener('keypress', function(e) {
