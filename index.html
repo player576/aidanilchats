@@ -13,9 +13,8 @@
         .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
         .search-box input { flex-grow: 1; padding: 10px; background: #2a2a35; border: 1px solid #444; color: white; border-radius: 6px; text-transform: uppercase; }
         
-        /* Стили для всплывающего инвайта */
         #invite-box { background: #f04747; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; text-align: center; font-weight: bold; }
-        #invite-box button { background: #fff; color: #000; margin-left: 10px; padding: 5px 15px; }
+        #invite-box button { background: #fff; color: #000; margin-left: 10px; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
 
         #chat-target-title { background: #5865f2; padding: 8px; border-radius: 6px 6px 0 0; font-weight: bold; display: none; text-align: center; }
         #chat { height: 350px; border: 1px solid #3a3a4a; overflow-y: auto; padding: 15px; background: #2a2a35; border-radius: 0 0 8px 8px; margin-bottom: 15px; display: none; }
@@ -70,7 +69,7 @@
         const chatDiv = document.getElementById('chat');
         const msgInput = document.getElementById('messageInput');
 
-        // 1. ИНИЦИАЛИЗАЦИЯ И РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ НА СЕРВЕРЕ
+        // 1. ИНИЦИАЛИЗАЦИЯ ПОЛЬЗОВАТЕЛЯ
         async function initUser() {
             let savedTag = localStorage.getItem('aidanil_tag');
             if (!savedTag) {
@@ -84,19 +83,23 @@
             myTag = savedTag;
             document.getElementById('myTagLabel').textContent = myTag;
 
-            // Регистрируем наш тег в глобальном списке пользователей на сервере Google
-            await fetch(`${DB_BASE_URL}users/${myTag}.json`, {
-                method: 'PUT',
-                body: JSON.stringify({ active: true })
-            });
+            try {
+                // Регистрируем наш тег в базе данных
+                await fetch(`${DB_BASE_URL}users/${myTag}.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ active: true })
+                });
+            } catch (e) {
+                console.error("Ошибка регистрации юзера:", e);
+            }
 
-            // Запускаем постоянный фоновый цикл (раз в секунду) для проверки инвайтов и новых сообщений
+            // Запускаем фоновый цикл раз в секунду
             loopInterval = setInterval(globalTick, 1000);
         }
 
-        // 2. ГЛОБАЛЬНЫЙ ТИК (проверяет инвайты и обновляет чат)
+        // 2. ФОНОВЫЙ ЦИКЛ ОБНОВЛЕНИЯ
         async function globalTick() {
-            // А. Проверяем, не хочет ли кто-то с нами пообщаться (входящие инвайты)
+            // Проверяем входящие инвайты
             try {
                 const res = await fetch(`${DB_BASE_URL}invites/${myTag}.json`);
                 const inviteData = await res.json();
@@ -110,13 +113,13 @@
                 }
             } catch(e) {}
 
-            // Б. Если у нас открыт чат — обновляем сообщения и проверяем статус подтверждения
+            // Если открыто окно чата — проверяем статус и грузим сообщения
             if (currentChatId) {
                 checkChatStatusAndLoad();
             }
         }
 
-        // 3. ОТКРЫТИЕ ЧАТА ПО ИНИЦИАТИВЕ ПОЛЬЗОВАТЕЛЯ (Кнопка "Открыть чат")
+        // 3. ОТКРЫТИЕ ЧАТА (Кнопка "Открыть чат")
         async function startChat() {
             const inputTag = document.getElementById('searchTagInput').value.trim().toUpperCase();
             
@@ -129,7 +132,7 @@
                 return;
             }
 
-            // БАГ 1: Проверяем, существует ли пользователь в базе данных
+            // Проверяем, существует ли пользователь в базе данных
             const userCheck = await fetch(`${DB_BASE_URL}users/${inputTag}.json`);
             const userData = await userCheck.json();
             
@@ -141,7 +144,7 @@
             targetTag = inputTag;
             currentChatId = [myTag, targetTag].sort().join('_');
 
-            // Отправляем инвайт собеседнику (БАГ 2)
+            // Отправляем инвайт собеседнику
             await fetch(`${DB_BASE_URL}invites/${targetTag}.json`, {
                 method: 'PUT',
                 body: JSON.stringify({ from: myTag, status: 'pending' })
@@ -150,14 +153,14 @@
             showChatUI();
         }
 
-        // 4. ПРИНЯТИЕ ПРИГЛАШЕНИЯ (Кнопка "Принять")
+        // 4. ПРИНЯТИЕ ПРИГЛАШЕНИЯ
         async function acceptInvite() {
             if (!activeInviteFrom) return;
             
             targetTag = activeInviteFrom;
             currentChatId = [myTag, targetTag].sort().join('_');
 
-            // Меняем статус инвайта на принятый
+            // Меням статус инвайта у себя на "accepted"
             await fetch(`${DB_BASE_URL}invites/${myTag}.json`, {
                 method: 'PUT',
                 body: JSON.stringify({ from: targetTag, status: 'accepted' })
@@ -167,7 +170,6 @@
             showChatUI();
         }
 
-        // Вспомогательная функция для отображения каркаса чата
         function showChatUI() {
             document.getElementById('chat-target-title').style.display = 'block';
             document.getElementById('chat-target-title').textContent = `Чат с пользователем [${targetTag}]`;
@@ -178,28 +180,26 @@
 
         // 5. ПРОВЕРКА СТАТУСА ЧАТА И ЗАГРУЗКА
         async function checkChatStatusAndLoad() {
-            // Проверяем статус инвайта у обоих участников
-            const resMyInvite = await fetch(`${DB_BASE_URL}invites/${myTag}.json`);
-            const myInviteData = await resMyInvite.json();
-            
-            const resTheirInvite = await fetch(`${DB_BASE_URL}invites/${targetTag}.json`);
-            const theirInviteData = await res_TheirInviteData = await resTheirInvite.json();
+            try {
+                const resMyInvite = await fetch(`${DB_BASE_URL}invites/${myTag}.json`);
+                const myInviteData = await resMyInvite.json();
+                
+                const resTheirInvite = await fetch(`${DB_BASE_URL}invites/${targetTag}.json`);
+                const theirInviteData = await resTheirInvite.json();
 
-            // Если хотя бы один принял приглашение или отправил его, смотрим статус
-            let isAccepted = false;
-            if (myInviteData && myInviteData.from === targetTag && myInviteData.status === 'accepted') isAccepted = true;
-            if (theirInviteData && theirInviteData.from === myTag && theirInviteData.status === 'accepted') isAccepted = true;
+                let isAccepted = false;
+                if (myInviteData && myInviteData.from === targetTag && myInviteData.status === 'accepted') isAccepted = true;
+                if (theirInviteData && theirInviteData.from === myTag && theirInviteData.status === 'accepted') isAccepted = true;
 
-            if (isAccepted) {
-                // Если принято — открываем управление сообщениями
-                document.getElementById('chat-status-text').style.display = 'none';
-                document.getElementById('inputControls').style.display = 'flex';
-                loadMessages(); // Грузим сообщения
-            } else {
-                // Если нет — прячем инпуты и пишем, что ждем
-                document.getElementById('chat-status-text').style.display = 'block';
-                document.getElementById('inputControls').style.display = 'none';
-            }
+                if (isAccepted) {
+                    document.getElementById('chat-status-text').style.display = 'none';
+                    document.getElementById('inputControls').style.display = 'flex';
+                    loadMessages();
+                } else {
+                    document.getElementById('chat-status-text').style.display = 'block';
+                    document.getElementById('inputControls').style.display = 'none';
+                }
+            } catch(e) {}
         }
 
         // 6. ОТПРАВКА СООБЩЕНИЯ
@@ -222,7 +222,7 @@
             } catch (e) { console.error(e); }
         }
 
-        // 7. РЕНДЕР СООБЩЕНИЙ
+        // 7. ЗАГРУЗКА СООБЩЕНИЙ
         async function loadMessages() {
             const url = `${DB_BASE_URL}chats/${currentChatId}.json`;
             try {
@@ -248,6 +248,7 @@
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
+        // Запуск
         initUser();
 
         msgInput.addEventListener('keypress', function(e) {
