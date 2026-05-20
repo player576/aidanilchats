@@ -3,21 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>aidanilchats FINAL</title>
+    <title>aidanilchats PRO ULTRA</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #1e1e24; color: #fff; max-width: 500px; margin: 20px auto; padding: 20px; }
         h2 { text-align: center; color: #ffca28; margin-bottom: 5px; }
-        .my-tag { text-align: center; color: #aaa; font-size: 0.9em; margin-bottom: 20px; }
-        .my-tag span { color: #ffca28; font-weight: bold; background: #2a2a35; padding: 4px 10px; border-radius: 4px; border: 1px solid #444; }
         
-        .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
-        .search-box input { flex-grow: 1; padding: 10px; background: #2a2a35; border: 1px solid #444; color: white; border-radius: 6px; }
-        
+        .profile-box { background: #2a2a35; padding: 12px; border-radius: 8px; border: 1px solid #444; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .my-tag { color: #aaa; font-size: 0.9em; }
+        .my-tag span { color: #ffca28; font-weight: bold; }
+        .my-tag span.is-admin { color: #f04747; text-shadow: 0 0 5px rgba(240,71,71,0.5); }
+        .btn-sm { padding: 4px 10px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
+        .btn-sm:hover { background: #555; }
+
+        /* Блок Избранного */
+        .favorites-box { background: #2a2a35; padding: 12px; border-radius: 8px; border: 1px solid #3a3a4a; margin-bottom: 20px; }
+        .favorites-box h4 { margin: 0 0 8px 0; color: #ffca28; font-size: 0.9em; text-transform: uppercase; }
+        #favorites-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .fav-item { background: #3a3a4a; padding: 4px 10px; border-radius: 20px; font-size: 0.85em; cursor: pointer; border: 1px solid #555; }
+        .fav-item:hover { background: #5865f2; border-color: #5865f2; }
+        .fav-admin { border-color: #f04747; color: #ff8f8f; }
+
         #invite-box { background: #f04747; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; text-align: center; font-weight: bold; }
         #invite-box button { background: #fff; color: #000; margin-left: 10px; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
 
+        .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
+        .search-box input { flex-grow: 1; padding: 10px; background: #2a2a35; border: 1px solid #444; color: white; border-radius: 6px; }
+        
         #chat-target-title { background: #5865f2; padding: 8px; border-radius: 6px 6px 0 0; font-weight: bold; display: none; text-align: center; }
-        #chat { height: 350px; border: 1px solid #3a3a4a; overflow-y: auto; padding: 15px; background: #2a2a35; border-radius: 0 0 8px 8px; margin-bottom: 15px; display: none; }
+        #chat { height: 300px; border: 1px solid #3a3a4a; overflow-y: auto; padding: 15px; background: #2a2a35; border-radius: 0 0 8px 8px; margin-bottom: 15px; display: none; }
         
         .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; max-width: 80%; width: fit-content; }
         .msg.me { background: #5865f2; margin-left: auto; }
@@ -34,7 +47,16 @@
 <body>
 
     <h2>aidanilchats</h2>
-    <div class="my-tag">Ваш никнейм: <span id="myTagLabel">Загрузка...</span></div>
+    
+    <div class="profile-box">
+        <div class="my-tag">Вы вошли как: <span id="myTagLabel">Загрузка...</span></div>
+        <button class="btn-sm" onclick="changeNicknameManual()">Изменить ник</button>
+    </div>
+
+    <div class="favorites-box">
+        <h4>⭐ Избранные чаты (введите /friends в чате)</h4>
+        <div id="favorites-list"></div>
+    </div>
     
     <div id="invite-box">
         Пользователь <span id="inviter-name">XXXX</span> хочет начать чат!
@@ -42,8 +64,8 @@
     </div>
 
     <div class="search-box">
-        <input type="text" id="searchTagInput" placeholder="Введите никнейм друга для поиска...">
-        <button onclick="startChat()">Найти и открыть</button>
+        <input type="text" id="searchTagInput" placeholder="Введите никнейм друга или команду...">
+        <button onclick="handleSearchOrCommand()">Ввод</button>
     </div>
 
     <div id="chat-target-title">Чат с пользователем ....</div>
@@ -52,7 +74,7 @@
     <div id="chat-status-text">Ожидание, пока собеседник примет приглашение...</div>
 
     <div class="controls" id="inputControls">
-        <input type="text" id="messageInput" placeholder="Введите сообщение...">
+        <input type="text" id="messageInput" placeholder="Введите сообщение или /friends...">
         <button onclick="sendMessage()">👉</button>
     </div>
 
@@ -69,41 +91,139 @@
         const chatDiv = document.getElementById('chat');
         const msgInput = document.getElementById('messageInput');
 
-        // 1. ЗАПРОС И РЕГИСТРАЦИЯ НИКНЕЙМА
+        // 1. АВТОМАТИЧЕСКИЙ ВХОД И РЕГИСТРАЦИЯ (ФУНКЦИЯ 1)
         async function initUser() {
             let savedTag = localStorage.getItem('aidanil_custom_nickname');
             
-            // Если ника нет в памяти браузера, запрашиваем его через всплывающее окно prompt
-            while (!savedTag || savedTag.trim() === "") {
-                savedTag = prompt("Добро пожаловать в aidanilchats!\nВведите ваш уникальный никнейм (любые буквы, цифры, символы):");
+            // Если заходим первый раз — спрашиваем ник
+            if (!savedTag || savedTag.trim() === "") {
+                savedTag = askForNickname();
             }
             
-            // Убираем лишние пробелы по краям
             myTag = savedTag.trim();
-            document.getElementById('myTagLabel').textContent = myTag;
-            localStorage.setItem('aidanil_custom_nickname', myTag);
+            updateProfileUI();
+            
+            // Инициализируем список избранного (ФУНКЦИЯ 2)
+            initFavorites();
 
             try {
-                // Регистрируем ник в Firebase, чтобы другие могли нас найти
-                // Используем encodeURIComponent на случай, если в нике есть спецсимволы или пробелы
                 await fetch(`${DB_BASE_URL}users/${encodeURIComponent(myTag)}.json`, {
                     method: 'PUT',
                     body: JSON.stringify({ active: true })
                 });
-            } catch (e) {
-                console.error("Ошибка сети при регистрации:", e);
-            }
+            } catch (e) { console.error(e); }
 
-            // Запускаем постоянный секундный таймер обновлений
+            if (loopInterval) clearInterval(loopInterval);
             loopInterval = setInterval(globalTick, 1000);
         }
 
-        // 2. ФОНОВЫЙ ТИК (Ловим инвайты и обновляем чат)
+        // Запрос ника с проверкой на защиту админки
+        function askForNickname() {
+            let tag = "";
+            while (!tag || tag.trim() === "") {
+                tag = prompt("Добро пожаловать в aidanilchats!\nВведите ваш постоянный никнейм:");
+                if (tag && tag.trim().toLowerCase() === 'admin') {
+                    alert("Никнейм 'admin' защищен! Зайдите под своим обычным ником, а затем активируйте админку через команду.");
+                    tag = "";
+                }
+            }
+            localStorage.setItem('aidanil_custom_nickname', tag.trim());
+            return tag;
+        }
+
+        // Кнопка принудительной смены ника
+        function changeNicknameManual() {
+            let oldName = localStorage.getItem('aidanil_custom_nickname');
+            let newTag = prompt("Введите новый никнейм:", oldName);
+            if (newTag && newTag.trim() !== "" && newTag.trim().toLowerCase() !== 'admin') {
+                localStorage.setItem('aidanil_custom_nickname', newTag.trim());
+                initUser();
+            } else if (newTag && newTag.trim().toLowerCase() === 'admin') {
+                alert("Ник 'admin' защищен системой безопасности!");
+            }
+        }
+
+        function updateProfileUI() {
+            const label = document.getElementById('myTagLabel');
+            label.textContent = myTag;
+            if (myTag.toLowerCase() === 'admin') {
+                label.className = "is-admin";
+                label.textContent = "⭐️ admin (Создатель)";
+            } else {
+                label.className = "";
+            }
+        }
+
+        // 2. РАБОТА С ИЗБРАННЫМ (ФУНКЦИЯ 2)
+        function initFavorites() {
+            let favs = localStorage.getItem('aidanil_favs');
+            if (!favs) {
+                // Массив избранного. По умолчанию ВСЕГДА добавляется 'admin' (ФУНКЦИЯ 3)
+                favs = ['admin'];
+                localStorage.setItem('aidanil_favs', JSON.stringify(favs));
+            } else {
+                // Если список есть, но в нем почему-то нет админа — дописываем его автоматикой
+                let arr = JSON.parse(favs);
+                if (!arr.includes('admin')) {
+                    arr.unshift('admin');
+                    localStorage.setItem('aidanil_favs', JSON.stringify(arr));
+                }
+            }
+            renderFavorites();
+        }
+
+        function renderFavorites() {
+            const listDiv = document.getElementById('favorites-list');
+            listDiv.innerHTML = '';
+            const arr = JSON.parse(localStorage.getItem('aidanil_favs') || '["admin"]');
+            
+            arr.forEach(name => {
+                const item = document.createElement('div');
+                item.className = name.toLowerCase() === 'admin' ? 'fav-item fav-admin' : 'fav-item';
+                item.textContent = name;
+                item.onclick = () => {
+                    document.getElementById('searchTagInput').value = name;
+                    startChatWithTag(name);
+                };
+                listDiv.appendChild(item);
+            });
+        }
+
+        // 3. ОБРАБОТКА ВВОДА СТРОКИ ПОИСКА ИЛИ АДМИН-КОМАНДЫ (ФУНКЦИЯ 3)
+        async function handleSearchOrCommand() {
+            const input = document.getElementById('searchTagInput').value.trim();
+            
+            // Проверяем админскую команду /Pravaadmin в основном поле ввода
+            if (input === '/Pravaadmin') {
+                document.getElementById('searchTagInput').value = '';
+                activateAdminStatus();
+                return;
+            }
+
+            if (input) {
+                startChatWithTag(input);
+            }
+        }
+
+        // Активация админ-прав
+        async function activateAdminStatus() {
+            myTag = 'admin';
+            localStorage.setItem('aidanil_custom_nickname', 'admin');
+            updateProfileUI();
+            
+            // Регистрируем официального админа в глобальной базе
+            await fetch(`${DB_BASE_URL}users/admin.json`, {
+                method: 'PUT',
+                body: JSON.stringify({ active: true, role: 'owner' })
+            });
+            
+            alert("Права администратора успешно получены! Мессенджер aidanilchats переключен в режим Создателя. 👑");
+        }
+
+        // Фоновый цикл
         async function globalTick() {
             if (!myTag) return;
-            
             try {
-                // Проверяем входящие приглашения для нашего ника
                 const res = await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`);
                 const inviteData = await res.json();
                 
@@ -116,39 +236,29 @@
                 }
             } catch(e) {}
 
-            // Если открыт чат — обновляем статус одобрения и сообщения
             if (currentChatId) {
                 checkChatStatusAndLoad();
             }
         }
 
-        // 3. ОТКРЫТИЕ ЧАТА (Кнопка "Найти и открыть")
-        async function startChat() {
-            const inputTag = document.getElementById('searchTagInput').value.trim();
-            
-            if (!inputTag) {
-                alert('Введите хоть какой-нибудь никнейм!');
-                return;
-            }
+        // Запуск чата по нику
+        async function startChatWithTag(inputTag) {
             if (inputTag === myTag) {
                 alert('Нельзя открыть чат с самим собой!');
                 return;
             }
 
-            // БАГ 1 ИСПРАВЛЕН: Проверяем, существует ли этот ник в Firebase
             const userCheck = await fetch(`${DB_BASE_URL}users/${encodeURIComponent(inputTag)}.json`);
             const userData = await userCheck.json();
             
             if (!userData) {
-                alert(`Пользователь "${inputTag}" не найден в мессенджере. Проверь буквы и пробелы!`);
+                alert(`Пользователь "${inputTag}" не найден! Проверь правильность ввода.`);
                 return;
             }
 
             targetTag = inputTag;
-            // Создаем ID чата. Сортируем ники по алфавиту, чтобы у обоих ID совпал независимо от того, кто первый нашел друга
             currentChatId = [myTag, targetTag].sort().join('_');
 
-            // БАГ 2 ИСПРАВЛЕН: Отправляем инвайт собеседнику на подтверждение
             await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(targetTag)}.json`, {
                 method: 'PUT',
                 body: JSON.stringify({ from: myTag, status: 'pending' })
@@ -157,14 +267,11 @@
             showChatUI();
         }
 
-        // 4. ПРИНЯТИЕ ПРИГЛАШЕНИЯ (Кнопка "Принять")
         async function acceptInvite() {
             if (!activeInviteFrom) return;
-            
             targetTag = activeInviteFrom;
             currentChatId = [myTag, targetTag].sort().join('_');
 
-            // Меняем статус инвайта у себя на "accepted"
             await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`, {
                 method: 'PUT',
                 body: JSON.stringify({ from: targetTag, status: 'accepted' })
@@ -182,7 +289,6 @@
             checkChatStatusAndLoad();
         }
 
-        // 5. МОНИТОРИНГ СТАТУСА ЧАТА И ЗАГРУЗКА
         async function checkChatStatusAndLoad() {
             try {
                 const resMyInvite = await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`);
@@ -206,13 +312,33 @@
             } catch(e) {}
         }
 
-        // 6. ОТПРАВКА СООБЩЕНИЯ
+        // 4. ОТПРАВКА И ОБРАБОТКА ТЕКСТОВЫХ КОМАНД В ЧАТЕ (ФУНКЦИЯ 2)
         async function sendMessage() {
             const text = msgInput.value.trim();
             if (text === '' || !currentChatId) return;
 
             msgInput.value = '';
-            
+
+            // Перехватываем команду /friends
+            if (text.toLowerCase() === '/friends') {
+                let favs = JSON.parse(localStorage.getItem('aidanil_favs') || '["admin"]');
+                if (!favs.includes(targetTag)) {
+                    favs.push(targetTag);
+                    localStorage.setItem('aidanil_favs', JSON.stringify(favs));
+                    renderFavorites();
+                    alert(`Пользователь ${targetTag} успешно добавлен в список избранного! ⭐`);
+                } else {
+                    alert('Этот контакт уже есть у вас в избранном!');
+                }
+                return; // Прерываем функцию, чтобы команда не улетела собеседнику в чат
+            }
+
+            // Перехватываем команду /Pravaadmin внутри поля ввода чата
+            if (text === '/Pravaadmin') {
+                activateAdminStatus();
+                return;
+            }
+
             const url = `${DB_BASE_URL}chats/${encodeURIComponent(currentChatId)}.json`;
             try {
                 await fetch(url, {
@@ -226,7 +352,6 @@
             } catch (e) { console.error(e); }
         }
 
-        // 7. ЗАГРУЗКА И СОРТИРОВКА ХРОНОЛОГИИ
         async function loadMessages() {
             const url = `${DB_BASE_URL}chats/${encodeURIComponent(currentChatId)}.json`;
             try {
@@ -252,7 +377,7 @@
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        // Запуск всей логики мессенджера
+        // Полный запуск
         initUser();
 
         msgInput.addEventListener('keypress', function(e) {
