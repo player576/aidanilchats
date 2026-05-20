@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>aidanilchats PRO ULTRA v2</title>
+    <title>aidanilchats OS PRO</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #1e1e24; color: #fff; max-width: 500px; margin: 20px auto; padding: 20px; }
+        
+        /* Стили для белого экрана смерти при бан-кике */
+        #ban-screen { position: fixed; top:0; left:0; width:100vw; height:100vh; background: white; color: black; z-index: 99999; display: none; justify-content: center; align-items: center; font-size: 24px; font-weight: bold; text-align: center; padding: 20px; }
+
         h2 { text-align: center; color: #ffca28; margin-bottom: 5px; }
         
-        /* Сделали курсор pointer, чтобы было понятно, что сюда можно кликать */
         .profile-box { background: #2a2a35; padding: 12px; border-radius: 8px; border: 1px solid #444; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
         .my-tag { color: #aaa; font-size: 0.9em; }
         .my-tag span { color: #ffca28; font-weight: bold; }
         .my-tag span.is-admin { color: #f04747; text-shadow: 0 0 5px rgba(240,71,71,0.5); }
         .btn-sm { padding: 4px 10px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
-        .btn-sm:hover { background: #555; }
 
         .favorites-box { background: #2a2a35; padding: 12px; border-radius: 8px; border: 1px solid #3a3a4a; margin-bottom: 20px; }
         .favorites-box h4 { margin: 0 0 8px 0; color: #ffca28; font-size: 0.9em; text-transform: uppercase; }
@@ -36,15 +38,20 @@
         .msg.me { background: #5865f2; margin-left: auto; }
         .msg.other { background: #3a3a4a; margin-right: auto; }
         
+        /* Стили для секретного сообщения */
+        .secret-locked { background: #443355 !important; border: 1px dashed #ffca28; cursor: pointer; font-style: italic; color: #ffd54f; }
+        .secret-unlocked { background: #1b5e20 !important; border: 1px solid #4caf50; }
+
         .controls { display: flex; gap: 10px; display: none; }
         #messageInput { flex-grow: 1; padding: 10px; background: #2a2a35; border: 1px solid #444; color: white; border-radius: 6px; }
         #chat-status-text { text-align: center; color: #aaa; font-style: italic; margin-top: 10px; display: none; }
         
         button { padding: 10px 20px; background: #ffca28; color: #1e1e24; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #ffe082; }
     </style>
 </head>
 <body>
+
+    <div id="ban-screen">Вы были заблокированы создателем! 💀</div>
 
     <h2>aidanilchats</h2>
     
@@ -74,7 +81,7 @@
     <div id="chat-status-text">Ожидание, пока собеседник примет приглашение...</div>
 
     <div class="controls" id="inputControls">
-        <input type="text" id="messageInput" placeholder="Введите сообщение или /friends...">
+        <input type="text" id="messageInput" placeholder="Сообщение или /... = Текст = password = 123">
         <button onclick="sendMessage()">👉</button>
     </div>
 
@@ -87,31 +94,29 @@
         let currentChatId = '';
         let loopInterval = null;
         let activeInviteFrom = null; 
-
-        // Переменная для подсчета тапов по плашке профиля
         let adminClickCount = 0;
 
         const chatDiv = document.getElementById('chat');
         const msgInput = document.getElementById('messageInput');
 
-        // 1. ВХОД И ПРОВЕРКА ЗАЩИТЫ
+        // 1. ВХОД
         async function initUser() {
             let savedTag = localStorage.getItem('aidanil_custom_nickname');
-            
-            if (!savedTag || savedTag.trim() === "") {
-                savedTag = askForNickname();
-            }
+            if (!savedTag || savedTag.trim() === "") savedTag = askForNickname();
             
             myTag = savedTag.trim();
             updateProfileUI();
             initFavorites();
+
+            // Проверяем бан на входе
+            await checkBanStatus();
 
             try {
                 await fetch(`${DB_BASE_URL}users/${encodeURIComponent(myTag)}.json`, {
                     method: 'PUT',
                     body: JSON.stringify({ active: true })
                 });
-            } catch (e) { console.error(e); }
+            } catch (e) {}
 
             if (loopInterval) clearInterval(loopInterval);
             loopInterval = setInterval(globalTick, 1000);
@@ -120,10 +125,9 @@
         function askForNickname() {
             let tag = "";
             while (!tag || tag.trim() === "") {
-                tag = prompt("Добро пожаловать в aidanilchats!\nВведите ваш постоянный никнейм:");
-                // БАГ ИСПРАВЛЕН: Обычным входом занять 'admin' нельзя вообще никак
+                tag = prompt("Добро保存вать в aidanilchats!\nВведите ваш никнейм:");
                 if (tag && tag.trim().toLowerCase() === 'admin') {
-                    alert("Никнейм 'admin' защищен! Используйте скрытую пасхалку для активации.");
+                    alert("Ник 'admin' защищен!");
                     tag = "";
                 }
             }
@@ -137,91 +141,38 @@
             if (newTag && newTag.trim() !== "" && newTag.trim().toLowerCase() !== 'admin') {
                 localStorage.setItem('aidanil_custom_nickname', newTag.trim());
                 initUser();
-            } else if (newTag && newTag.trim().toLowerCase() === 'admin') {
-                alert("Ник 'admin' защищен системой безопасности!");
             }
         }
 
-        // СЕКРЕТНЫЙ КЛИК (3 РАЗА ПО ОКНУ ВХОДА/ПРОФИЛЯ)
-        function handleAdminSecretClick() {
-            adminClickCount++;
-            if (adminClickCount === 3) {
-                adminClickCount = 0; // Сбрасываем счетчик
+        // 2. БАН-СИСТЕМА (ПРОВЕРКА)
+        async function checkBanStatus() {
+            try {
+                const res = await fetch(`${DB_BASE_URL}bans/${encodeURIComponent(myTag)}.json`);
+                const banData = await res.json();
                 
-                // Открывается секретное кошко ввода команды
-                let secretCommand = prompt("🔐 Доступ ограничен. Введите команду разработчика:");
-                
-                if (secretCommand === '/Pravaadmin') {
-                    activateAdminStatus();
+                if (banData && banData.isBanned) {
+                    if (banData.until === 'forever') {
+                        document.getElementById('ban-screen').style.display = 'flex';
+                    } else if (Date.now() < banData.until) {
+                        const daysLeft = Math.ceil((banData.until - Date.now()) / (1000 * 60 * 60 * 24));
+                        document.getElementById('ban-screen').textContent = `Вы заблокированы еще на ${daysLeft} дн.`;
+                        document.getElementById('ban-screen').style.display = 'flex';
+                    } else {
+                        // Срок бана вышел — разбаниваем автоматом
+                        document.getElementById('ban-screen').style.display = 'none';
+                        await fetch(`${DB_BASE_URL}bans/${encodeURIComponent(myTag)}.json`, { method: 'DELETE' });
+                    }
                 } else {
-                    alert("Неверная команда доступа!");
+                    document.getElementById('ban-screen').style.display = 'none';
                 }
-            }
-            
-            // Сброс счетчика кликов, если юзер перестал кликать (за полторы секунды)
-            setTimeout(() => { adminClickCount = 0; }, 1500);
+            } catch(e) {}
         }
 
-        async function activateAdminStatus() {
-            myTag = 'admin';
-            localStorage.setItem('aidanil_custom_nickname', 'admin');
-            updateProfileUI();
-            
-            await fetch(`${DB_BASE_URL}users/admin.json`, {
-                method: 'PUT',
-                body: JSON.stringify({ active: true, role: 'owner' })
-            });
-            
-            alert("Код подтвержден. Права администратора получены! 👑");
-        }
-
-        function updateProfileUI() {
-            const label = document.getElementById('myTagLabel');
-            label.textContent = myTag;
-            if (myTag.toLowerCase() === 'admin') {
-                label.className = "is-admin";
-                label.textContent = "⭐️ admin (Создатель)";
-            } else {
-                label.className = "";
-            }
-        }
-
-        // ИЗБРАННОЕ
-        function initFavorites() {
-            let favs = localStorage.getItem('aidanil_favs');
-            if (!favs) {
-                favs = ['admin'];
-                localStorage.setItem('aidanil_favs', JSON.stringify(favs));
-            } else {
-                let arr = JSON.parse(favs);
-                if (!arr.includes('admin')) {
-                    arr.unshift('admin');
-                    localStorage.setItem('aidanil_favs', JSON.stringify(arr));
-                }
-            }
-            renderFavorites();
-        }
-
-        function renderFavorites() {
-            const listDiv = document.getElementById('favorites-list');
-            listDiv.innerHTML = '';
-            const arr = JSON.parse(localStorage.getItem('aidanil_favs') || '["admin"]');
-            
-            arr.forEach(name => {
-                const item = document.createElement('div');
-                item.className = name.toLowerCase() === 'admin' ? 'fav-item fav-admin' : 'fav-item';
-                item.textContent = name;
-                item.onclick = () => {
-                    document.getElementById('searchTagInput').value = name;
-                    startChatWithTag(name);
-                };
-                listDiv.appendChild(item);
-            });
-        }
-
-        // ФОНОВЫЙ ЦИКЛ
+        // 3. ФОНОВЫЙ ЦИКЛ
         async function globalTick() {
             if (!myTag) return;
+            await checkBanStatus(); // Юзера могут кикнуть прямо во время общения!
+
             try {
                 const res = await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`);
                 const inviteData = await res.json();
@@ -235,34 +186,180 @@
                 }
             } catch(e) {}
 
-            if (currentChatId) {
-                checkChatStatusAndLoad();
+            if (currentChatId) checkChatStatusAndLoad();
+        }
+
+        // 4. ОТПРАВКА И СИСТЕМА КОМАНД (Кick / Скрытые сообщения)
+        async function sendMessage() {
+            const text = msgInput.value.trim();
+            if (text === '' || !currentChatId) return;
+            msgInput.value = '';
+
+            // А. ФУНКЦИЯ КОМАНДЫ /kick (ТОЛЬКО ДЛЯ АДМИНА)
+            if (text.startsWith('/kick ')) {
+                if (myTag !== 'admin') {
+                    alert('Ошибка: Только создатель может использовать эту команду!');
+                    return;
+                }
+                const param = text.replace('/kick ', '').trim(); // 'z' или число дней
+                let untilTime = 'forever';
+                
+                if (param !== 'z' && !isNaN(param)) {
+                    untilTime = Date.now() + (parseInt(param) * 24 * 60 * 60 * 1000); // Переводим дни в милисекунды
+                }
+
+                await fetch(`${DB_BASE_URL}bans/${encodeURIComponent(targetTag)}.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ isBanned: true, until: untilTime })
+                });
+                alert(`Пользователь ${targetTag} успешно забанен!`);
+                return;
+            }
+
+            // Б. ФУНКЦИЯ АМНИСТИИ /kickkick (ТОЛЬКО ДЛЯ АДМИНА)
+            if (text === '/kickkick') {
+                if (myTag !== 'admin') return;
+                await fetch(`${DB_BASE_URL}bans/${encodeURIComponent(targetTag)}.json`, { method: 'DELETE' });
+                alert(`Пользователь ${targetTag} амнистирован! Белый экран снят.`);
+                return;
+            }
+
+            // В. ИЗБРАННОЕ /friends
+            if (text.toLowerCase() === '/friends') {
+                let favs = JSON.parse(localStorage.getItem('aidanil_favs') || '["admin"]');
+                if (!favs.includes(targetTag)) {
+                    favs.push(targetTag);
+                    localStorage.setItem('aidanil_favs', JSON.stringify(favs));
+                    renderFavorites();
+                    alert(`Добавлено в избранное! ⭐`);
+                }
+                return;
+            }
+
+            // Г. СКРЫТЫЕ СООБЩЕНИЯ ПО ТВОЕМУ СИНТАКСИСУ
+            // Схема: /... = Текст = password = 123
+            if (text.startsWith('/...')) {
+                const parts = text.split('=');
+                if (parts.length >= 4 && parts[2].trim().toLowerCase() === 'password') {
+                    const secretText = parts[1].trim();
+                    const passwordValue = parts[3].trim();
+                    
+                    sendPayload({
+                        sender: myTag,
+                        type: 'secret',
+                        text: secretText,
+                        pass: passwordValue,
+                        timestamp: Date.now()
+                    });
+                    return;
+                }
+            }
+
+            // Обычное сообщение
+            sendPayload({ sender: myTag, type: 'text', text: text, timestamp: Date.now() });
+        }
+
+        async function sendPayload(payload) {
+            const url = `${DB_BASE_URL}chats/${encodeURIComponent(currentChatId)}.json`;
+            try { await fetch(url, { method: 'POST', body: JSON.stringify(payload) }); } catch(e){}
+        }
+
+        // 5. ЗАГРУЗКА И ОТОБРАЖЕНИЕ (Вскрытие секретов по паролю)
+        async function loadMessages() {
+            const url = `${DB_BASE_URL}chats/${encodeURIComponent(currentChatId)}.json`;
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                chatDiv.innerHTML = '';
+                
+                if (data) {
+                    const sorted = Object.values(data).sort((a, b) => a.timestamp - b.timestamp);
+                    sorted.forEach(msg => {
+                        const msgHtml = document.createElement('div');
+                        msgHtml.className = msg.sender === myTag ? 'msg me' : 'msg other';
+                        
+                        if (msg.type === 'secret') {
+                            // Создаем заблокированную плашку скрытого сообщения
+                            msgHtml.classList.add('secret-locked');
+                            msgHtml.textContent = '🔒 Скрытое сообщение (Нажми, чтобы ввести пароль)';
+                            
+                            // По клику просим пароль
+                            msgHtml.onclick = () => {
+                                const userPass = prompt('Введите секретный пароль для раскрытия сообщения:');
+                                if (userPass === msg.pass) {
+                                    msgHtml.textContent = `🔓 [Секрет]: ${msg.text}`;
+                                    msgHtml.onclick = null; // Снимаем клик после разблокировки
+                                    msgHtml.className = (msg.sender === myTag ? 'msg me ' : 'msg other ') + 'secret-unlocked';
+                                } else if (userPass !== null) {
+                                    alert('Неверный пароль! Доступ заблокирован.');
+                                }
+                            };
+                        } else {
+                            msgHtml.innerHTML = `<div>${escapeHtml(msg.text)}</div>`;
+                        }
+                        chatDiv.appendChild(msgHtml);
+                    });
+                    chatDiv.scrollTop = chatDiv.scrollHeight;
+                }
+            } catch (e) {}
+        }
+
+        // ТАЙНЫЙ ВХОД АДМИНА (3 ТАПА)
+        function handleAdminSecretClick() {
+            adminClickCount++;
+            if (adminClickCount === 3) {
+                adminClickCount = 0;
+                let secretCommand = prompt("🔐 Введите секретную команду:");
+                if (secretCommand === '/Pravaadmin') {
+                    myTag = 'admin';
+                    localStorage.setItem('aidanil_custom_nickname', 'admin');
+                    updateProfileUI();
+                    fetch(`${DB_BASE_URL}users/admin.json`, { method: 'PUT', body: JSON.stringify({ active: true }) });
+                    alert("Режим Создателя активирован! 👑");
+                }
+            }
+            setTimeout(() => { adminClickCount = 0; }, 1500);
+        }
+
+        function updateProfileUI() {
+            const label = document.getElementById('myTagLabel');
+            label.textContent = myTag;
+            if (myTag.toLowerCase() === 'admin') {
+                label.className = "is-admin";
+                label.textContent = "⭐️ admin (Создатель)";
             }
         }
 
-        async function startChatWithTag(inputTag) {
-            if (!inputTag) return;
-            if (inputTag === myTag) {
-                alert('Нельзя открыть чат с самим собой!');
-                return;
-            }
+        function initFavorites() {
+            let favs = localStorage.getItem('aidanil_favs');
+            if (!favs) { favs = ['admin']; localStorage.setItem('aidanil_favs', JSON.stringify(favs)); }
+            renderFavorites();
+        }
 
+        function renderFavorites() {
+            const listDiv = document.getElementById('favorites-list');
+            listDiv.innerHTML = '';
+            const arr = JSON.parse(localStorage.getItem('aidanil_favs') || '["admin"]');
+            arr.forEach(name => {
+                const item = document.createElement('div');
+                item.className = name.toLowerCase() === 'admin' ? 'fav-item fav-admin' : 'fav-item';
+                item.textContent = name;
+                item.onclick = () => {
+                    document.getElementById('searchTagInput').value = name;
+                    startChatWithTag(name);
+                };
+                listDiv.appendChild(item);
+            });
+        }
+
+        async function startChatWithTag(inputTag) {
+            if (!inputTag || inputTag === myTag) return;
             const userCheck = await fetch(`${DB_BASE_URL}users/${encodeURIComponent(inputTag)}.json`);
             const userData = await userCheck.json();
-            
-            if (!userData) {
-                alert(`Пользователь "${inputTag}" не найден!`);
-                return;
-            }
-
+            if (!userData) { alert(`Пользователь "${inputTag}" не найден!`); return; }
             targetTag = inputTag;
             currentChatId = [myTag, targetTag].sort().join('_');
-
-            await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(targetTag)}.json`, {
-                method: 'PUT',
-                body: JSON.stringify({ from: myTag, status: 'pending' })
-            });
-
+            await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(targetTag)}.json`, { method: 'PUT', body: JSON.stringify({ from: myTag, status: 'pending' }) });
             showChatUI();
         }
 
@@ -270,12 +367,7 @@
             if (!activeInviteFrom) return;
             targetTag = activeInviteFrom;
             currentChatId = [myTag, targetTag].sort().join('_');
-
-            await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`, {
-                method: 'PUT',
-                body: JSON.stringify({ from: targetTag, status: 'accepted' })
-            });
-
+            await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`, { method: 'PUT', body: JSON.stringify({ from: targetTag, status: 'accepted' }) });
             document.getElementById('invite-box').style.display = 'none';
             showChatUI();
         }
@@ -284,7 +376,6 @@
             document.getElementById('chat-target-title').style.display = 'block';
             document.getElementById('chat-target-title').textContent = `Чат с пользователем [${targetTag}]`;
             chatDiv.style.display = 'block';
-            chatDiv.innerHTML = '';
             checkChatStatusAndLoad();
         }
 
@@ -292,14 +383,11 @@
             try {
                 const resMyInvite = await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`);
                 const myInviteData = await resMyInvite.json();
-                
                 const resTheirInvite = await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(targetTag)}.json`);
                 const theirInviteData = await resTheirInvite.json();
-
                 let isAccepted = false;
                 if (myInviteData && myInviteData.from === targetTag && myInviteData.status === 'accepted') isAccepted = true;
                 if (theirInviteData && theirInviteData.from === myTag && theirInviteData.status === 'accepted') isAccepted = true;
-
                 if (isAccepted) {
                     document.getElementById('chat-status-text').style.display = 'none';
                     document.getElementById('inputControls').style.display = 'flex';
@@ -311,70 +399,10 @@
             } catch(e) {}
         }
 
-        // ОТПРАВКА СООБЩЕНИЙ
-        async function sendMessage() {
-            const text = msgInput.value.trim();
-            if (text === '' || !currentChatId) return;
-
-            msgInput.value = '';
-
-            // Команда /friends в чате работает штатно
-            if (text.toLowerCase() === '/friends') {
-                let favs = JSON.parse(localStorage.getItem('aidanil_favs') || '["admin"]');
-                if (!favs.includes(targetTag)) {
-                    favs.push(targetTag);
-                    localStorage.setItem('aidanil_favs', JSON.stringify(favs));
-                    renderFavorites();
-                    alert(`Пользователь ${targetTag} добавлен в избранное! ⭐`);
-                } else {
-                    alert('Этот контакт уже есть в избранном!');
-                }
-                return;
-            }
-
-            const url = `${DB_BASE_URL}chats/${encodeURIComponent(currentChatId)}.json`;
-            try {
-                await fetch(url, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        sender: myTag,
-                        text: text,
-                        timestamp: Date.now()
-                    })
-                });
-            } catch (e) { console.error(e); }
-        }
-
-        async function loadMessages() {
-            const url = `${DB_BASE_URL}chats/${encodeURIComponent(currentChatId)}.json`;
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                chatDiv.innerHTML = '';
-                
-                if (data) {
-                    const sorted = Object.values(data).sort((a, b) => a.timestamp - b.timestamp);
-                    sorted.forEach(msg => {
-                        const msgHtml = document.createElement('div');
-                        msgHtml.className = msg.sender === myTag ? 'msg me' : 'msg other';
-                        msgHtml.innerHTML = `<div>${escapeHtml(msg.text)}</div>`;
-                        chatDiv.appendChild(msgHtml);
-                    });
-                    chatDiv.scrollTop = chatDiv.scrollHeight;
-                }
-            } catch (e) { console.error(e); }
-        }
-
-        function escapeHtml(text) {
-            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        }
+        function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
         initUser();
-
-        msgInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') sendMessage();
-        });
+        msgInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') sendMessage(); });
     </script>
 </body>
 </html>
