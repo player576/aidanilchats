@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>aidanilchats OS MOBILE FIXED</title>
+    <title>aidanilchats OS MOBILE ULTIMATE</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #1e1e24; color: #fff; max-width: 500px; margin: 20px auto; padding: 20px; transition: background 0.1s ease; }
         #ban-screen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: white; color: black; z-index: 99999; display: none; justify-content: center; align-items: center; font-size: 24px; font-weight: bold; text-align: center; padding: 20px; }
@@ -26,7 +26,7 @@
         #chat-wrapper { position: relative; display: none; }
         #typing-status { background: rgba(255, 202, 40, 0.15); color: #ffca28; padding: 4px 12px; font-size: 0.85em; font-style: italic; border-left: 1px solid #ffca28; border-right: 1px solid #ffca28; display: none; }
         #chat { height: 300px; border: 1px solid #3a3a4a; overflow-y: auto; padding: 15px; background: #2a2a35; border-radius: 0 0 8px 8px; margin-bottom: 15px; }
-        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; max-width: 80%; width: fit-content; word-break: break-all; }
+        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; max-width: 80%; width: fit-content; word-break: break-word; white-space: pre-wrap; }
         .msg.me { background: #5865f2; margin-left: auto; }
         .msg.other { background: #3a3a4a; margin-right: auto; }
         .secret-locked { background: #443355 !important; border: 1px dashed #ffca28; cursor: pointer; font-style: italic; color: #ffd54f; }
@@ -37,7 +37,9 @@
         button { padding: 10px 20px; background: #ffca28; color: #1e1e24; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
-<body onclick="initAudioOnFirstClick()"> <div id="ban-screen">Вы были заблокированы создателем! 💀</div>
+<body onclick="initAudioOnFirstClick()">
+
+    <div id="ban-screen">Вы были заблокированы создателем! 💀</div>
 
     <h2>aidanilchats</h2>
     
@@ -85,12 +87,11 @@
         let activeInviteFrom = null; 
         let adminClickCount = 0;
         let typingTimeout = null;
-        let globalAudioCtx = null; // Глобальный контекст звука
+        let globalAudioCtx = null;
 
         const chatDiv = document.getElementById('chat');
         const msgInput = document.getElementById('messageInput');
 
-        // Безопасный запуск аудио на мобилках
         function initAudioOnFirstClick() {
             if (!globalAudioCtx) {
                 globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -100,21 +101,24 @@
             }
         }
 
-        async function initUser() {
+        // ИСПРАВЛЕНО: Быстрая синхронная загрузка локального ника, чтобы интерфейс не висел
+        function initUser() {
             let savedTag = localStorage.getItem('aidanil_custom_nickname');
-            if (!savedTag || savedTag.trim() === "") savedTag = askForNickname();
+            if (!savedTag || savedTag.trim() === "") {
+                savedTag = askForNickname();
+            }
             
             myTag = savedTag.trim();
-            updateProfileUI();
+            updateProfileUI(); // Ник сразу отобразится на экране!
             initFavorites();
-            await checkBanStatus();
 
-            try {
-                await fetch(`${DB_BASE_URL}users/${encodeURIComponent(myTag)}.json`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ active: true })
-                });
-            } catch (e) {}
+            // Отправляем статус в БД в фоновом режиме, не вешая интерфейс
+            fetch(`${DB_BASE_URL}users/${encodeURIComponent(myTag)}.json`, {
+                method: 'PUT',
+                body: JSON.stringify({ active: true })
+            }).catch(e => console.log("База оффлайн"));
+
+            checkBanStatus();
 
             if (loopInterval) clearInterval(loopInterval);
             loopInterval = setInterval(globalTick, 1000);
@@ -165,7 +169,7 @@
 
         async function globalTick() {
             if (!myTag) return;
-            await checkBanStatus();
+            checkBanStatus();
 
             try {
                 const res = await fetch(`${DB_BASE_URL}invites/${encodeURIComponent(myTag)}.json`);
@@ -243,7 +247,7 @@
 
                 oscillator.start();
                 oscillator.stop(globalAudioCtx.currentTime + 0.4);
-            } catch(e) { console.log("Аудио заблокировано системой мобильного устройства"); }
+            } catch(e) {}
         }
 
         async function sendMessage() {
@@ -390,6 +394,4 @@
         function renderFavorites() {
             const listDiv = document.getElementById('favorites-list');
             listDiv.innerHTML = '';
-            const arr = JSON.parse(localStorage.getItem('aidanil_favs') || '["admin"]');
-            arr.forEach(name => {
-                const item = document
+            const arr = JSON.parse(localStorage.getItem('aidanil_favs') || '["ad
